@@ -131,9 +131,10 @@ The compiled `VoxrtSileroNative.xcframework` is downloaded automatically by SPM 
 
 ## License
 
-- The Swift wrapper (`Sources/VoxrtSilero/`) is licensed under **Apache-2.0**.
-- The compiled `VoxrtSileroNative.xcframework` is proprietary VoxRT runtime code, redistributed for use **with the unmodified VoxrtSilero Swift Package**. See `LICENSE-BINARY` (in the binary distribution) for the full terms.
+- The Swift wrapper (`Sources/VoxrtSilero/`) is licensed under **Apache-2.0**. See [`LICENSE`](LICENSE).
+- The compiled `VoxrtSileroNative.xcframework` (fetched by SPM from the matching GitHub Release) is proprietary VoxRT runtime code owned by Elephant Enterprises LLC, redistributable as part of this unmodified Swift Package. See [`LICENSE-BINARY`](LICENSE-BINARY) for the full terms.
 - Silero VAD model weights are © Silero Team, originally MIT-licensed; the `.vxrt` encoded form retains the same license. See the [models repository](https://github.com/VoxRT/voxrt-silero-models).
+- Commercial integration / custom-model packaging questions: help@voxrt.com.
 
 ## Links
 
