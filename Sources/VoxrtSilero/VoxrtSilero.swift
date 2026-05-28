@@ -11,15 +11,15 @@
 //
 // Threading: per-instance, **not** thread-safe. Serialise
 // `processPcm` / `reset` / `close` against each other on a given
-// `VoxrtSileroVad` (mirrors the Kotlin `VoxrtSileroVadEngine`
-// contract).
+// `VoxrtSileroVadEngine` (matches the Kotlin `VoxrtSileroVadEngine`
+// contract one-to-one across platforms).
 
 import Foundation
 import VoxrtSileroNative
 
 // ─── Public types ─────────────────────────────────────────────────────────
 
-/// Errors raised by `VoxrtSileroVad`. Each case maps 1:1 to a
+/// Errors raised by `VoxrtSileroVadEngine`. Each case maps 1:1 to a
 /// `VOXRT_ERR_*` status code from the C API, plus a couple of
 /// Swift-side conditions.
 public enum VoxrtSileroError: Error, Equatable, CustomStringConvertible {
@@ -144,7 +144,7 @@ public func voxrtABIVersion() -> VoxrtABIVersion {
 /// context, LSTM `h`/`c`, hysteresis machine, time counter — lives
 /// in this class, per ADR-0022. The closed Rust binary handles only
 /// model execution.
-public final class VoxrtSileroVad {
+public final class VoxrtSileroVadEngine {
 
     // ─── Native handle ─────────────────────────────────────────────────
     //
@@ -191,7 +191,7 @@ public final class VoxrtSileroVad {
     private static let contextSamples: Int = voxrt_silero_context_samples()
     private static let inputSamples: Int = voxrt_silero_input_samples()
     private static let msPerChunk: UInt64 =
-        UInt64(VoxrtSileroVad.windowSamples) * 1000 / 16_000
+        UInt64(VoxrtSileroVadEngine.windowSamples) * 1000 / 16_000
 
     // ─── Construction ─────────────────────────────────────────────────
 
@@ -215,18 +215,39 @@ public final class VoxrtSileroVad {
         }
         self.handle = resolved
         self.config = config
-        self.lstmState = [Float](repeating: 0, count: VoxrtSileroVad.lstmStateFloats)
-        self.rollingContext = [Int16](repeating: 0, count: VoxrtSileroVad.contextSamples)
-        self.inferInput = [Int16](repeating: 0, count: VoxrtSileroVad.inputSamples)
+        self.lstmState = [Float](repeating: 0, count: VoxrtSileroVadEngine.lstmStateFloats)
+        self.rollingContext = [Int16](repeating: 0, count: VoxrtSileroVadEngine.contextSamples)
+        self.inferInput = [Int16](repeating: 0, count: VoxrtSileroVadEngine.inputSamples)
     }
 
-    /// Load model bytes from the SDK's bundle.
+    /// Load the `.vxrt` model directly from a `URL`, memory-mapping
+    /// the file via `Data(contentsOf:options: .mappedIfSafe)`. This
+    /// is the recommended path for bundled assets and downloaded
+    /// files on iOS — avoids reading the whole file into RAM and is
+    /// the iOS counterpart of the Android `fromAssetFd(...)` factory.
+    ///
+    /// The `options` parameter defaults to `.mappedIfSafe` which lets
+    /// the OS demand-page the file. Pass `[]` if you specifically
+    /// need an eager copy (rare; only useful for tiny files on
+    /// platforms where mmap is undesirable).
+    public convenience init(
+        modelURL url: URL,
+        config: VoxrtSileroConfig = VoxrtSileroConfig(),
+        readingOptions options: Data.ReadingOptions = .mappedIfSafe
+    ) throws {
+        let data = try Data(contentsOf: url, options: options)
+        try self.init(modelBytes: data, config: config)
+    }
+
+    /// Load model bytes from the SDK's bundle. Convenience wrapper
+    /// around `init(modelURL:config:)` that resolves the bundled
+    /// `.vxrt` resource by name + extension first.
     public static func fromBundleResource(
         named name: String = "silero_vad",
         extension ext: String = "vxrt",
         in bundle: Bundle = .main,
         config: VoxrtSileroConfig = VoxrtSileroConfig()
-    ) throws -> VoxrtSileroVad {
+    ) throws -> VoxrtSileroVadEngine {
         guard let url = bundle.url(forResource: name, withExtension: ext) else {
             throw VoxrtSileroError.resourceNotFound(
                 name: name,
@@ -234,8 +255,7 @@ public final class VoxrtSileroVad {
                 bundle: bundle.bundleIdentifier ?? bundle.bundlePath
             )
         }
-        let data = try Data(contentsOf: url)
-        return try VoxrtSileroVad(modelBytes: data, config: config)
+        return try VoxrtSileroVadEngine(modelURL: url, config: config)
     }
 
     deinit {
@@ -258,28 +278,28 @@ public final class VoxrtSileroVad {
 
         while cursor < pcm.count {
             // Top up `pendingPcm` to one window's worth.
-            let need = VoxrtSileroVad.windowSamples - pendingPcm.count
+            let need = VoxrtSileroVadEngine.windowSamples - pendingPcm.count
             let take = min(need, pcm.count - cursor)
             pendingPcm.append(contentsOf: pcm[cursor ..< cursor + take])
             cursor += take
 
-            if pendingPcm.count < VoxrtSileroVad.windowSamples {
+            if pendingPcm.count < VoxrtSileroVadEngine.windowSamples {
                 break // not enough audio yet
             }
 
             // Assemble the [context_64 | window_512] inference input.
             inferInput.replaceSubrange(
-                0 ..< VoxrtSileroVad.contextSamples,
+                0 ..< VoxrtSileroVadEngine.contextSamples,
                 with: rollingContext
             )
             inferInput.replaceSubrange(
-                VoxrtSileroVad.contextSamples ..< VoxrtSileroVad.inputSamples,
+                VoxrtSileroVadEngine.contextSamples ..< VoxrtSileroVadEngine.inputSamples,
                 with: pendingPcm
             )
             // Save the trailing 64 of this window as next call's context.
             rollingContext = Array(
-                pendingPcm[(VoxrtSileroVad.windowSamples - VoxrtSileroVad.contextSamples) ..<
-                    VoxrtSileroVad.windowSamples]
+                pendingPcm[(VoxrtSileroVadEngine.windowSamples - VoxrtSileroVadEngine.contextSamples) ..<
+                    VoxrtSileroVadEngine.windowSamples]
             )
             pendingPcm.removeAll(keepingCapacity: true)
 
@@ -287,7 +307,7 @@ public final class VoxrtSileroVad {
             let prob = try inferOneWindow(handle: handle)
 
             chunkCount += 1
-            let timeMs = chunkCount * VoxrtSileroVad.msPerChunk
+            let timeMs = chunkCount * VoxrtSileroVadEngine.msPerChunk
             applyHysteresis(prob: prob, timeMs: timeMs, events: &events)
         }
 
@@ -325,7 +345,7 @@ public final class VoxrtSileroVad {
     /// Restore a previously-snapshotted LSTM state. The caller is
     /// responsible for matching length (256 floats).
     public func restoreLstmState(_ snapshot: [Float]) {
-        guard snapshot.count == VoxrtSileroVad.lstmStateFloats else { return }
+        guard snapshot.count == VoxrtSileroVadEngine.lstmStateFloats else { return }
         lstmState = snapshot
     }
 
@@ -390,3 +410,16 @@ public final class VoxrtSileroVad {
         // state, don't reset candidateOffsetMs.
     }
 }
+
+// ─── Backwards-compatibility alias ────────────────────────────────────────
+//
+// v0.1.0 / v0.1.1 published the class as `VoxrtSileroVad`. v0.1.2
+// renames it to `VoxrtSileroVadEngine` so the iOS surface matches
+// the Kotlin `VoxrtSileroVadEngine` 1:1 (cross-platform call sites
+// look identical). Existing iOS callers keep compiling — the
+// deprecated typealias yields a one-shot warning that points at
+// the new name.
+
+@available(*, deprecated, renamed: "VoxrtSileroVadEngine",
+           message: "Renamed in v0.1.2 to match the Kotlin VoxrtSileroVadEngine. Update the type reference; behaviour is identical.")
+public typealias VoxrtSileroVad = VoxrtSileroVadEngine

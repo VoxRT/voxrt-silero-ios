@@ -2,7 +2,7 @@
 
 Silero v5 voice-activity detection, running on the **VoxRT** custom on-device inference runtime.
 
-- Current version: `v0.1.1`
+- Current version: `v0.1.2`
 - Minimum iOS: 16.0
 - Architectures shipped: `arm64` (iPhone / iPad, NEON-accelerated)
 - License: Apache-2.0 (Swift wrapper) · proprietary (compiled runtime, redistribution allowed via this Swift Package)
@@ -43,23 +43,23 @@ In Xcode: **File → Add Package Dependencies →** paste:
 https://github.com/VoxRT/voxrt-silero-ios
 ```
 
-…and pin to **v0.1.1**.
+…and pin to **v0.1.2**.
 
 Or in `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/VoxRT/voxrt-silero-ios.git", from: "0.1.1"),
+    .package(url: "https://github.com/VoxRT/voxrt-silero-ios.git", from: "0.1.2"),
 ],
 ```
 
 ## Get the VAD model
 
 The model weights are NOT bundled — you fetch them once from
-[`voxrt-silero-models`](https://github.com/VoxRT/voxrt-silero-models/releases/tag/v0.1.1):
+[`voxrt-silero-models`](https://github.com/VoxRT/voxrt-silero-models/releases/tag/v0.1.2):
 
 ```
-https://github.com/VoxRT/voxrt-silero-models/releases/download/v0.1.1/silero_vad.vxrt
+https://github.com/VoxRT/voxrt-silero-models/releases/download/v0.1.2/silero_vad.vxrt
 ```
 
 SHA-256: `0fe8498c9bd1ae119bcb0c75c8481b3a8b8be0f95c14f334d469851c19054156`
@@ -75,14 +75,18 @@ You decide where it lives. Three common patterns:
 ```swift
 import VoxrtSilero
 
-// 1. Load the model bytes (however you obtained them).
-guard let url = Bundle.main.url(forResource: "silero_vad", withExtension: "vxrt"),
-      let modelBytes = try? Data(contentsOf: url) else {
-    fatalError("silero_vad.vxrt not found")
+// 1. Resolve the bundled model URL.
+guard let modelURL = Bundle.main.url(forResource: "silero_vad", withExtension: "vxrt") else {
+    fatalError("silero_vad.vxrt not found in bundle")
 }
 
-// 2. Spin up an engine. One per audio stream.
-let vad = try VoxrtSileroVad(modelBytes: modelBytes)
+// 2. Build the engine. `init(modelURL:)` memory-maps the file via
+//    `Data(contentsOf:options: .mappedIfSafe)` under the hood — no
+//    eager copy into RAM. One instance per audio stream.
+let vad = try VoxrtSileroVadEngine(modelURL: modelURL)
+
+// (Convenience: same as above for the default bundle + name)
+//    let vad = try VoxrtSileroVadEngine.fromBundleResource()
 
 // 3. Feed PCM (Int16, 16 kHz, mono).
 let events = try vad.processPcm(samples)
@@ -97,16 +101,122 @@ for event in events {
 
 The engine owns the LSTM state internally. Call `vad.reset()` between streams (e.g. when re-arming the mic). State snapshotting for replay / fork is also supported — see `snapshotLstmState()`.
 
+## Live microphone example
+
+The engine is **synchronous and stateful** — no internal queue, no
+delegate callbacks. You drive it from your `AVAudioEngine` tap
+callback and get events back as the return value of `processPcm`.
+
+```swift
+import AVFAudio
+import VoxrtSilero
+
+// NOTE: tap callbacks fire on a real-time audio thread. Don't
+// allocate heavy buffers per callback in production — pre-size +
+// reuse like the snippet below.
+
+let session = AVAudioSession.sharedInstance()
+try session.setCategory(.playAndRecord, mode: .measurement, options: [])
+try session.setActive(true)
+
+let audioEngine = AVAudioEngine()
+let input = audioEngine.inputNode
+let hwFormat = input.outputFormat(forBus: 0)            // 44.1 / 48 kHz
+let voxrtFormat = AVAudioFormat(                        // engine target
+    commonFormat: .pcmFormatInt16,
+    sampleRate: 16_000,
+    channels: 1,
+    interleaved: true,
+)!
+let converter = AVAudioConverter(from: hwFormat, to: voxrtFormat)!
+
+guard let modelURL = Bundle.main.url(forResource: "silero_vad", withExtension: "vxrt") else {
+    fatalError("silero_vad.vxrt missing from bundle")
+}
+let vad = try VoxrtSileroVadEngine(modelURL: modelURL)
+
+// 512 samples @ 16 kHz = 32 ms — the engine's internal frame size.
+// We resample mic chunks into this buffer.
+let scratchCapacity: AVAudioFrameCount = 512
+let voxrtBuf = AVAudioPCMBuffer(pcmFormat: voxrtFormat,
+                                 frameCapacity: scratchCapacity)!
+
+input.installTap(
+    onBus: 0,
+    bufferSize: 4_096,                                  // hw frames per cb
+    format: hwFormat
+) { hwBuf, _ in
+    voxrtBuf.frameLength = 0
+    var error: NSError?
+    converter.convert(to: voxrtBuf, error: &error) { _, status in
+        status.pointee = .haveData
+        return hwBuf
+    }
+    if error != nil { return }
+    guard let int16 = voxrtBuf.int16ChannelData?[0] else { return }
+    let n = Int(voxrtBuf.frameLength)
+    let samples = Array(UnsafeBufferPointer(start: int16, count: n))
+
+    let events = try? vad.processPcm(samples)
+    for event in events ?? [] {
+        // Tap callbacks run off the main thread — marshal UI.
+        switch event.kind {
+        case .speechStart:
+            DispatchQueue.main.async { print("speech started @ \(event.timestampMs) ms") }
+        case .speechEnd:
+            DispatchQueue.main.async { print("speech ended   @ \(event.timestampMs) ms") }
+        }
+    }
+}
+
+try audioEngine.start()
+// ... later, on stop:
+audioEngine.stop()
+input.removeTap(onBus: 0)
+vad.close()
+```
+
+`vad.processPcm` returns immediately with whatever VAD events
+crossed the hysteresis thresholds during this buffer — often an
+empty list while inside a speech segment, an onset/offset event
+when the state machine transitions. UI marshalling is the
+caller's job; the engine takes no opinion about your concurrency
+model.
+
+`Info.plist` must declare the microphone privacy reason:
+
+```xml
+<key>NSMicrophoneUsageDescription</key>
+<string>Used for on-device voice activity detection.</string>
+```
+
 ## Audio contract
 
-- **Sample rate:** 16 000 Hz
-- **Sample format:** `Int16` PCM, mono, native endian
+- **Sample rate:** 16 000 Hz. **No automatic resampling.** Phone mic hardware delivers 44.1 / 48 kHz to `AVAudioEngine`; convert via `AVAudioConverter` to 16 kHz Int16 mono before feeding `processPcm`. Feeding the wrong rate is the #1 source of "VAD never fires" bugs.
+- **Sample format:** `Int16` PCM, mono, native endian.
 - **Buffer size:** any. The engine internally segments into 32 ms frames (512 samples) with a 4 ms (64-sample) rolling context.
 - **Latency:** one frame (32 ms) of inherent buffering. End-of-speech is reported with the configurable `minSilenceMs` (default 250 ms) hysteresis.
 
+## Threading
+
+- The engine is a **synchronous, stateful function**. It does NOT own a queue. Each `processPcm` call blocks on the calling thread for the duration of inference — typically the `AVAudioEngine` tap thread for live mic. Marshal events back to UI via `DispatchQueue.main.async` (or your concurrency framework of choice).
+- One instance is **single-thread-at-a-time**. Serialise `processPcm` / `reset` / `close` against each other on a given instance.
+- Between unrelated streams (e.g. re-arming the mic for a new session), call `vad.reset()` to zero the LSTM state without paying weight-load cost again. Call `vad.close()` when done.
+
+## Permissions
+
+iOS requires a usage-description string for microphone access. Add to your **app**'s `Info.plist`:
+
+```xml
+<key>NSMicrophoneUsageDescription</key>
+<string>Used for on-device voice activity detection.</string>
+```
+
+`AVAudioSession.requestRecordPermission(...)` triggers the user prompt the first time mic capture is initiated. Without the `Info.plist` key the app crashes with a privacy-violation exception on first request.
+
 ## Architectures roadmap
 
-`v0.1.1` ships only `arm64` for physical devices, NEON-optimized. Simulator slices (arm64-sim + x86_64) are included for build convenience but are not part of the supported production target list.
+`v0.1.2` ships only `arm64` for physical devices, NEON-optimized. Simulator slices (arm64-sim + x86_64) are included for build convenience but are not part of the supported production target list.
 
 | Target                       | Status     |
 | ---------------------------- | ---------- |
