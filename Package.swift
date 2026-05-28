@@ -27,8 +27,8 @@ let package = Package(
         ),
         .binaryTarget(
             name: "VoxrtSileroNative",
-            url: "https://github.com/VoxRT/voxrt-silero-ios/releases/download/v0.1.2/VoxrtSileroNative.xcframework.zip",
-            checksum: "45e6e095eac08b891902a08347ce2436b7ba3ac4e6fc07ae8def676ed98a7700"
+            url: "https://github.com/VoxRT/voxrt-silero-ios/releases/download/v0.1.3/VoxrtSileroNative.xcframework.zip",
+            checksum: "6020da631677e155dbe9ca94714df353225eed005959f629b292f0c922fba1a0"
         ),
     ]
 )

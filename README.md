@@ -2,7 +2,7 @@
 
 Silero v5 voice-activity detection, running on the **VoxRT** custom on-device inference runtime.
 
-- Current version: `v0.1.2`
+- Current version: `v0.1.3`
 - Minimum iOS: 16.0
 - Architectures shipped: `arm64` (iPhone / iPad, NEON-accelerated)
 - License: Apache-2.0 (Swift wrapper) · proprietary (compiled runtime, redistribution allowed via this Swift Package)
@@ -43,26 +43,26 @@ In Xcode: **File → Add Package Dependencies →** paste:
 https://github.com/VoxRT/voxrt-silero-ios
 ```
 
-…and pin to **v0.1.2**.
+…and pin to **v0.1.3**.
 
 Or in `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/VoxRT/voxrt-silero-ios.git", from: "0.1.2"),
+    .package(url: "https://github.com/VoxRT/voxrt-silero-ios.git", from: "0.1.3"),
 ],
 ```
 
 ## Get the VAD model
 
 The model weights are NOT bundled — you fetch them once from
-[`voxrt-silero-models`](https://github.com/VoxRT/voxrt-silero-models/releases/tag/v0.1.2):
+[`voxrt-silero-models`](https://github.com/VoxRT/voxrt-silero-models/releases/tag/v0.1.3):
 
 ```
-https://github.com/VoxRT/voxrt-silero-models/releases/download/v0.1.2/silero_vad.vxrt
+https://github.com/VoxRT/voxrt-silero-models/releases/download/v0.1.3/silero_vad.vxrt
 ```
 
-SHA-256: `0fe8498c9bd1ae119bcb0c75c8481b3a8b8be0f95c14f334d469851c19054156`
+SHA-256: `2ee47ed7b2d61c27a0516fbd3d511b8eb3efba4b1b1a58e7e12a6ff9cb8284ac`
 
 You decide where it lives. Three common patterns:
 
@@ -216,7 +216,7 @@ iOS requires a usage-description string for microphone access. Add to your **app
 
 ## Architectures roadmap
 
-`v0.1.2` ships only `arm64` for physical devices, NEON-optimized. Simulator slices (arm64-sim + x86_64) are included for build convenience but are not part of the supported production target list.
+`v0.1.3` ships only `arm64` for physical devices, NEON-optimized. Simulator slices (arm64-sim + x86_64) are included for build convenience but are not part of the supported production target list.
 
 | Target                       | Status     |
 | ---------------------------- | ---------- |
