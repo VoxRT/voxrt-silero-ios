@@ -62,7 +62,7 @@ The model weights are NOT bundled — you fetch them once from
 https://github.com/VoxRT/voxrt-silero-models/releases/download/v0.1.3/silero_vad.vxrt
 ```
 
-SHA-256: `2ee47ed7b2d61c27a0516fbd3d511b8eb3efba4b1b1a58e7e12a6ff9cb8284ac`
+SHA-256: `0fe8498c9bd1ae119bcb0c75c8481b3a8b8be0f95c14f334d469851c19054156`
 
 You decide where it lives. Three common patterns:
 
@@ -92,9 +92,11 @@ let vad = try VoxrtSileroVadEngine(modelURL: modelURL)
 let events = try vad.processPcm(samples)
 
 for event in events {
-    switch event.kind {
-    case .speechStart: print("speech started at \(event.timestampMs) ms")
-    case .speechEnd:   print("speech ended   at \(event.timestampMs) ms")
+    switch event {
+    case .speechOnset(let timeMs):
+        print("speech started at \(timeMs) ms")
+    case .speechOffset(let timeMs):
+        print("speech ended   at \(timeMs) ms")
     }
 }
 ```
@@ -160,11 +162,11 @@ input.installTap(
     let events = try? vad.processPcm(samples)
     for event in events ?? [] {
         // Tap callbacks run off the main thread — marshal UI.
-        switch event.kind {
-        case .speechStart:
-            DispatchQueue.main.async { print("speech started @ \(event.timestampMs) ms") }
-        case .speechEnd:
-            DispatchQueue.main.async { print("speech ended   @ \(event.timestampMs) ms") }
+        switch event {
+        case .speechOnset(let timeMs):
+            DispatchQueue.main.async { print("speech started @ \(timeMs) ms") }
+        case .speechOffset(let timeMs):
+            DispatchQueue.main.async { print("speech ended   @ \(timeMs) ms") }
         }
     }
 }
