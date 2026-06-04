@@ -15,7 +15,12 @@ VoxRT is a from-scratch inference runtime for on-device speech models. No ONNX R
 
 `VoxrtSilero` is the free, open-source showcase of that runtime: a Swift Package that runs the Silero v5 VAD with state-of-the-art per-frame latency. The runtime is the product; Silero is the demo subject.
 
-Commercial wake-word / keyword-spotting / phrase-recognition models built on the same runtime live at [voxrt.com](https://voxrt.com).
+Siblings on the same runtime:
+
+- [`VoxrtAsr`](https://github.com/VoxRT/voxrt-asr-ios) — streaming speech recognition (FastConformer 32M)
+- [`VoxrtWakeWord`](https://github.com/VoxRT/voxrt-wake-word-ios) — always-on wake-phrase detection (~48 K params)
+
+Commercial custom-phrase wake-word / keyword-spotting / domain-specific ASR models built on the same runtime live at [voxrt.com](https://voxrt.com).
 
 ## Performance
 
@@ -253,4 +258,6 @@ The compiled `VoxrtSileroNative.xcframework` is downloaded automatically by SPM 
 - VoxRT runtime + commercial models: [voxrt.com](https://voxrt.com)
 - Android counterpart: [voxrt-silero-android](https://github.com/VoxRT/voxrt-silero-android)
 - VAD model weights & versions: [voxrt-silero-models](https://github.com/VoxRT/voxrt-silero-models)
+- Streaming ASR (iOS): [voxrt-asr-ios](https://github.com/VoxRT/voxrt-asr-ios) · [models](https://github.com/VoxRT/voxrt-asr-models)
+- Wake-word (iOS): [voxrt-wake-word-ios](https://github.com/VoxRT/voxrt-wake-word-ios) · [models](https://github.com/VoxRT/voxrt-wake-word-models)
 - Bugs / questions: open an issue on this repo
