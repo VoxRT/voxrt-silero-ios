@@ -32,6 +32,22 @@ Measured at ship time, ARM64 release builds, post-warmup, RTF = wall-time-per-fr
 
 What this means: at 1.85% RTF you can run ~54 parallel VAD streams on a single core before saturating it, leaving the device idle to handle the rest of the audio pipeline (ASR, TTS, UI).
 
+## How it compares
+
+VAD became a commodity by 2026 — the question is **who you can actually ship in a paid mobile app** with measured numbers and a clean license:
+
+| | **VoxrtSilero** | Picovoice Cobra | WebRTC VAD | TEN VAD |
+|---|---|---|---|---|
+| Underlying model | Silero v5 (MIT upstream) | proprietary | GMM (2010) | proprietary |
+| Model / binary footprint | 1.2 MB model (.vxrt) | not published | < 100 KB | 320–532 KB shared lib (runtime + model bundled) |
+| Mobile RTF disclosed | ✅ measured on cheap Android + iPhone | ❌ desktop Ryzen + Raspberry Pi Zero only | ❌ | ✅ vendor-measured on Android + iPhone |
+| License | Runtime MIT + model MIT | Commercial freemium (paid tier opaque) | BSD-3 | Apache-2.0 **with non-compete clause**: redistribution blocked if it could enable Agora competitors |
+| Ship in a paid app | ✅ no per-deployment terms | ⚠️ requires paid commercial tier | ✅ accuracy is the 2010 floor | ❌ license clause 1 forbids it |
+
+We don't innovate on the VAD model — Silero v5 is the upstream MIT architecture you'd already pick. What we add is a NEON-optimized Rust runtime, a stateless C ABI suitable for SDK packaging, and per-device measured RTF that other vendors don't publish.
+
+Full sourced analysis: [voxrt.com](https://voxrt.com).
+
 ## Binary footprint
 
 - Swift wrapper source: ~17 KB total (`.swift` files included in your app's compile pass)
